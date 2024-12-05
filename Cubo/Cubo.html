@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cube</title>
+    <link rel="icon" href="cubo.png" type="image/x-icon">
+    <style>
+        #campo {
+            position: relative;
+            width: 1200px;
+            height: 400px;
+            border: 2px solid black;
+            background-color: lightblue;
+            overflow: hidden;
+        }
+
+        #personaje {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            background-image: url('cubo.png');
+            background-size: 100% 100%;
+        }
+
+        #enemigo {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            background-color: green;
+            right: 0;
+            top: 50%;
+        }
+
+        .bolita {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background-color: transparent;
+        }
+
+        .bolita-grande {
+            position: absolute;
+            width: 30px;
+            height: 30px;
+            background-image: url('Bolita.png');
+            background-size: cover;
+            border-radius: 50%;
+            left: -5px;
+            top: -5px;
+        }
+
+        .explosion {
+            position: absolute;
+            width: 60px;
+            height: 60px;
+            background-size: cover;
+            display: none;
+        }
+
+        .pincho {
+            position: absolute;
+            width: 30px;
+            height: 30px;
+            background-color: red;
+        }
+
+        #gameOverScreen {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            font-size: 40px;
+            text-align: center;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+            flex-direction: column;
+        }
+
+        #retryButton {
+            background-color: white;
+            color: black;
+            font-size: 20px;
+            padding: 10px;
+            margin-top: 20px;
+            cursor: pointer;
+        }
+
+        #puntos {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            font-size: 24px;
+            color: black;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="campo">
+        <div id="personaje" style="transform: translate(0, 0); background-image: url('cubo.png');"></div>
+        <div id="enemigo"></div>
+        <div id="gameOverScreen">
+            Game Over
+            <button id="retryButton">Retry</button>
+        </div>
+        <div id="puntos">Puntos: 0</div> 
+    </div>
+
+    <script>
+        const personaje = document.getElementById('personaje');
+        const enemigo = document.getElementById('enemigo');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const campo = document.getElementById('campo');
+        const puntosDisplay = document.getElementById('puntos');
+
+        let x = 0;
+        let y = 0;
+        let vy = 0;
+        const gravedad = 0.5;
+        const fuerzaSalto = -10;
+        const velocidadHorizontal = 5;
+        let enSuelo = false;
+        const personajeWidth = personaje.offsetWidth;
+        const personajeHeight = personaje.offsetHeight;
+        const campoWidth = document.getElementById('campo').offsetWidth;
+        const campoHeight = document.getElementById('campo').offsetHeight;
+        let gameOver = false;
+        let requestId;
+
+        let teclasPresionadas = {};
+        let intervaloDisparo = 1000;
+        let intervalId;
+
+        let puntos = 0; 
+        let pinchosActivados = false; 
+        let pinchoIntervalId; 
+        window.addEventListener('keydown', (event) => {
+            teclasPresionadas[event.key] = true;
+            cambiarSpriteMovimiento();
+        });
+
+        window.addEventListener('keyup', (event) => {
+            teclasPresionadas[event.key] = false;
+            cambiarSpriteQuieto();
+        });
+
+        function moverHorizontalmente() {
+            if (teclasPresionadas['ArrowLeft'] && x > 0) {
+                x -= velocidadHorizontal;
+                personaje.style.transform = `translate(${x}px, ${y}px) scaleX(-1)`;
+            }
+            if (teclasPresionadas['ArrowRight'] && x + personajeWidth < campoWidth) {
+                x += velocidadHorizontal;
+                personaje.style.transform = `translate(${x}px, ${y}px) scaleX(1)`;
+            }
+
+            personaje.style.transform += ` translate(${x}px, ${y}px)`;
+        }
+
+        function aplicarGravedadYSaltos() {
+            if (teclasPresionadas[' '] && enSuelo) {
+                vy = fuerzaSalto;
+                enSuelo = false;
+                cambiarSpriteSalto();
+            }
+
+            vy += gravedad;
+            y += vy;
+
+            if (y + personajeHeight >= campoHeight) {
+                y = campoHeight - personajeHeight;
+                vy = 0;
+                enSuelo = true;
+                cambiarSpriteQuieto();
+            }
+        }
+
+        function moverPersonaje() {
+            if (!gameOver) {
+                moverHorizontalmente();
+                aplicarGravedadYSaltos();
+                actualizarPosicion();
+            }
+        }
+
+        function actualizarPosicion() {
+            personaje.style.transform = `translate(${x}px, ${y}px) scaleX(${teclasPresionadas['ArrowLeft'] ? -1 : 1})`;
+        }
+
+        function cambiarSpriteMovimiento() {
+            if (teclasPresionadas['ArrowLeft'] || teclasPresionadas['ArrowRight']) {
+                personaje.style.backgroundImage = "url('cubomovimiento.png')";
+            }
+        }
+
+        function cambiarSpriteQuieto() {
+            if (!teclasPresionadas['ArrowLeft'] && !teclasPresionadas['ArrowRight']) {
+                personaje.style.backgroundImage = "url('cubo.png')";
+            }
+        }
+
+        function cambiarSpriteSalto() {
+            personaje.style.backgroundImage = "url('cubosalto.png')";
+        }
+
+        const retryButton = document.getElementById('retryButton');
+        retryButton.addEventListener('click', function () {
+            gameOver = false;
+            gameOverScreen.style.display = 'none';
+            x = 0;
+            y = 0;
+            vy = 0;
+            enSuelo = false;
+            puntos = 0; 
+            puntosDisplay.textContent = `Puntos: ${puntos}`; 
+            limpiarPinchos(); 
+            limpiarBolitas();
+            pinchosActivados = false; 
+            detenerPinchos(); 
+            cancelarAnimacion();
+            actualizarPosicion();
+            iniciarDisparos(); 
+            actualizar(); 
+        });
+
+        function actualizar() {
+            moverPersonaje();
+            if (puntos >= 250 && !pinchosActivados) {
+                pinchosActivados = true;
+                iniciarPinchos();
+            }
+            requestId = requestAnimationFrame(actualizar);
+        }
+
+        function cancelarAnimacion() {
+            cancelAnimationFrame(requestId);
+        }
+
+        function limpiarBolitas() {
+            const bolitas = document.querySelectorAll('.bolita');
+            bolitas.forEach(bolita => bolita.remove());
+        }
+
+        function dispararBolita() {
+            const bolita = document.createElement('div');
+            bolita.classList.add('bolita');
+            document.getElementById('campo').appendChild(bolita);
+
+            // Crear la bolita grande
+            const bolitaGrande = document.createElement('div');
+            bolitaGrande.classList.add('bolita-grande');
+            campo.appendChild(bolitaGrande);
+
+            let bolitaX = enemigo.offsetLeft;
+            let bolitaY = enemigo.offsetTop + enemigo.offsetHeight / 2 - 10;
+
+            bolita.style.left = `${bolitaX}px`;
+            bolita.style.top = `${bolitaY}px`;
+            bolitaGrande.style.left = `${bolitaX - 5}px`;
+            bolitaGrande.style.top = `${bolitaY - 5}px`;
+
+            const dx = x - bolitaX;
+            const dy = y - bolitaY;
+            const distancia = Math.sqrt(dx * dx + dy * dy);
+
+            const velocidad = 4;
+            const movimientoX = (dx / distancia) * velocidad;
+            const movimientoY = (dy / distancia) * velocidad;
+
+            function moverBolita() {
+                bolitaX += movimientoX;
+                bolitaY += movimientoY;
+                bolita.style.left = `${bolitaX}px`;
+                bolita.style.top = `${bolitaY}px`;
+                bolitaGrande.style.left = `${bolitaX - 5}px`;
+                bolitaGrande.style.top = `${bolitaY - 5}px`;
+
+                // Verificar colisiones con los bordes
+                if (bolitaX < 0 || bolitaX > campoWidth || bolitaY < 0 || bolitaY > campoHeight) {
+                    // Crear explosiones
+                    crearExplosiones(bolitaX, bolitaY);
+                    bolita.remove();
+                    bolitaGrande.remove();
+                    return;
+                }
+
+                if (
+                    bolitaX < x + personajeWidth &&
+                    bolitaX + 20 > x &&
+                    bolitaY < y + personajeHeight &&
+                    bolitaY + 20 > y
+                ) {
+                    gameOver = true;
+                    clearInterval(intervalId);
+                    gameOverScreen.style.display = 'flex';
+                    cancelarAnimacion();
+                    limpiarBolitas();
+                }
+
+                requestAnimationFrame(moverBolita);
+            }
+
+            moverBolita();
+        }
+
+        function crearExplosiones(bolitaX, bolitaY) {
+            const explosion1 = document.createElement('div');
+            explosion1.classList.add('explosion');
+            explosion1.style.backgroundImage = `url('Explosion.png')`;
+            explosion1.style.left = `${bolitaX - 30}px`;
+            explosion1.style.top = `${bolitaY - 40}px`;
+            explosion1.style.display = 'block';
+            campo.appendChild(explosion1);
+
+            const explosion2 = document.createElement('div');
+            explosion2.classList.add('explosion');
+            explosion2.style.backgroundImage = `url('Explosion2.png')`;
+            explosion2.style.left = `${bolitaX - 30}px`;
+            explosion2.style.top = `${bolitaY - 40}px`;
+            explosion2.style.display = 'block';
+            campo.appendChild(explosion2);
+
+            puntos += 10; 
+            puntosDisplay.textContent = `Puntos: ${puntos}`; 
+
+            let count = 0;
+            const explosionInterval = setInterval(() => {
+                explosion1.style.display = (count % 2 === 0) ? 'none' : 'block';
+                explosion2.style.display = (count % 2 === 0) ? 'block' : 'none';
+                count++;
+
+                if (count === 4) {
+                    clearInterval(explosionInterval);
+                    explosion1.remove();
+                    explosion2.remove();
+                }
+            }, 250);
+        }
+
+        function iniciarDisparos() {
+            intervalId = setInterval(dispararBolita, intervaloDisparo);
+        }
+
+        // Nueva función para crear pinchos
+        function iniciarPinchos() {
+            pinchoIntervalId = setInterval(() => {
+                const pincho = document.createElement('div');
+                pincho.classList.add('pincho');
+                pincho.style.left = `${Math.random() * (campoWidth - 30)}px`;
+                pincho.style.top = '0px';
+                campo.appendChild(pincho);
+
+                let pinchoVelocidad = 2;
+
+                function moverPincho() {
+                    let pinchoY = parseInt(pincho.style.top);
+                    pinchoY += pinchoVelocidad;
+                    pincho.style.top = `${pinchoY}px`;
+
+                    if (pinchoY + 30 > y && pinchoY < y + personajeHeight &&
+                        parseInt(pincho.style.left) + 30 > x && parseInt(pincho.style.left) < x + personajeWidth) {
+                        gameOver = true;
+                        clearInterval(intervalId);
+                        gameOverScreen.style.display = 'flex';
+                        cancelarAnimacion();
+                        limpiarBolitas();
+                        limpiarPinchos();
+                    }
+
+                    if (pinchoY > campoHeight) {
+                        pincho.remove();
+                    } else {
+                        requestAnimationFrame(moverPincho);
+                    }
+                }
+
+                moverPincho();
+            }, 1000);
+        }
+
+        function limpiarPinchos() {
+            const pinchos = document.querySelectorAll('.pincho');
+            pinchos.forEach(pincho => pincho.remove());
+        }
+
+        function detenerPinchos() {
+            clearInterval(pinchoIntervalId);
+            limpiarPinchos();
+        }
+
+        actualizar();
+        setTimeout(iniciarDisparos, 2000);
+    </script>
+</body>
+
+</html>
